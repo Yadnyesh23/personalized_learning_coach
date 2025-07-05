@@ -1,0 +1,40 @@
+# chat_backend/urls.py
+from django.urls import path
+from .views import (
+    InitMemoryView,
+    UpdateMemoryView,
+    CreateSessionView,
+    UploadPDFView,
+    AddMessageView,
+    SessionMemoryView,
+    RagAnswerView,
+    CreateQuizView,
+    AddQuestionsView,
+    GetQuizDetailsView,
+    SubmitQuizAnswersView,
+    ListSessionQuizzesView,
+    GetUserQuizAttemptsView,
+    CreateGoalView,
+    ListGoalsView,
+    GoalDetailView
+)
+
+urlpatterns = [
+    path('memory/init/', InitMemoryView.as_view()), 
+    path('memory/', UpdateMemoryView.as_view()),
+    path('session/create/', CreateSessionView.as_view()), 
+    path('session/<int:session_id>/upload/', UploadPDFView.as_view()), 
+    path('session/<int:session_id>/message/', AddMessageView.as_view()), 
+    path('session/<int:session_id>/memory/', SessionMemoryView.as_view()),
+    path('session/<int:session_id>/rag/', RagAnswerView.as_view()), 
+    path('session/<int:session_id>/quiz/create/', CreateQuizView.as_view()),
+    path('quiz/<int:quiz_id>/questions/add/', AddQuestionsView.as_view()),
+    path('quiz/<int:quiz_id>/', GetQuizDetailsView.as_view()),
+    path('session/<int:session_id>/quiz/<int:quiz_id>/submit/', SubmitQuizAnswersView.as_view()),
+    path('session/<int:session_id>/quizzes/', ListSessionQuizzesView.as_view()),
+    path('session/<int:session_id>/quiz_attempts/', GetUserQuizAttemptsView.as_view()),
+     path('session/<int:session_id>/goal/create/', CreateGoalView.as_view()),
+    path('session/<int:session_id>/goals/', ListGoalsView.as_view()),
+    path('goal/<int:goal_id>/', GoalDetailView.as_view()),
+
+]
