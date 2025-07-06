@@ -2,6 +2,7 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser
+from rest_framework.pagination import PageNumberPagination
 
 from .models import GlobalMemory, ChatSession, ChatMessage , Quiz, Question, UserQuizAttempt , Goal     
 
@@ -30,13 +31,12 @@ class UpdateMemoryView(APIView):
             return Response({"error": "Global memory not initialized."}, status=400)
         return Response({"preferences": memory.preferences}) 
 
-# 3. Create chat session
 class CreateSessionView(APIView):
     def post(self, request):
         session = ChatSession.objects.create() 
         return Response({"session_id": session.id})
 
-# 4. Upload PDF per session
+
 class UploadPDFView(APIView):
     parser_classes = [MultiPartParser]  
 
@@ -57,35 +57,78 @@ class UploadPDFView(APIView):
 class AddMessageView(APIView):
     def post(self, request, session_id):
         try:
-            session = ChatSession.objects.get(id=session_id) 
+            session = ChatSession.objects.get(id=session_id)
         except ChatSession.DoesNotExist:
             return Response({"error": "Invalid session ID"}, status=404)
 
-        message_content = request.data.get("message") 
-        is_user_message = request.data.get("is_user", True) 
+        message_content = request.data.get("message")
+        is_user_message = request.data.get("is_user", True)
+        quiz_id = request.data.get("quiz_id") # NEW: Get quiz_id from request
 
         if not message_content:
             return Response({"error": "Message content is required"}, status=400)
 
+        quiz_instance = None
+        if quiz_id:
+            try:
+                quiz_instance = Quiz.objects.get(id=quiz_id)
+            except Quiz.DoesNotExist:
+                return Response({"error": "Invalid quiz ID provided for message link"}, status=400)
+
         ChatMessage.objects.create(
-            session=session, 
+            session=session,
             message=message_content,
-            is_user=is_user_message 
+            is_user=is_user_message,
+            quiz=quiz_instance # NEW: Assign quiz instance
         )
         return Response({"message": "Message saved"})
 
+class CustomPagination(PageNumberPagination):
+        page_size = 10
+        page_size_query_param = 'page_size'
+        max_page_size = 100
+
 class SessionMemoryView(APIView):
+    pagination_class = CustomPagination
+
     def get(self, request, session_id):
         try:
-            session = ChatSession.objects.get(id=session_id) 
+            session = ChatSession.objects.get(id=session_id)
         except ChatSession.DoesNotExist:
             return Response({"error": "Invalid session ID"}, status=404)
 
-        messages = session.messages.order_by("created_at").values("message", "is_user", "created_at") 
-        return Response({
-            "messages": list(messages),
-            "pdf_uploaded": bool(session.uploaded_pdf) 
+        
+        messages = session.messages.all().select_related('quiz').order_by("created_at")
+
+        paginator = self.pagination_class()
+        paginated_messages = paginator.paginate_queryset(messages, request, view=self)
+
+        
+        formatted_messages = []
+        for msg in paginated_messages:
+            message_data = {
+                "id": msg.id,
+                "message": msg.message,
+                "is_user": msg.is_user,
+                "created_at": msg.created_at,
+                "quiz_metadata": None 
+            }
+            if msg.quiz:
+
+                message_data["quiz_metadata"] = {
+                    "quiz_id": msg.quiz.id,
+                    "title": msg.quiz.title,
+                    "description": msg.quiz.description,
+                    "num_questions": msg.quiz.questions.count() # Count related questions
+                }
+            formatted_messages.append(message_data)
+
+       
+        return paginator.get_paginated_response({
+            "messages": formatted_messages,
+            "pdf_uploaded": bool(session.uploaded_pdf)
         })
+
     
 class RagAnswerView(APIView):
     def post(self, request, session_id):
