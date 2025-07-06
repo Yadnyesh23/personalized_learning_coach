@@ -186,6 +186,7 @@ class AddQuestionsView(APIView):
         for q_data in questions_data:
             question_text = q_data.get("question_text")
             correct_answer = q_data.get("correct_answer", "")
+            options = q_data.get("options", [])
 
             if not question_text:
                
@@ -194,9 +195,14 @@ class AddQuestionsView(APIView):
             question = Question.objects.create(
                 quiz=quiz,
                 question_text=question_text,
-                correct_answer=correct_answer
+                correct_answer=correct_answer,
+                options=options
             )
-            created_questions.append({"id": question.id, "question_text": question.question_text})
+            created_questions.append({
+                "id": question.id, 
+                "question_text": question.question_text,
+                "options": question.options
+            })
 
         return Response({"message": "Questions added successfully", "questions": created_questions}, status=201)
 
@@ -208,9 +214,9 @@ class GetQuizDetailsView(APIView):
         except Quiz.DoesNotExist:
             return Response({"error": "Invalid quiz ID"}, status=404)
 
-        questions = quiz.questions.all().values("id", "question_text")
+        questions = quiz.questions.all().values("id", "question_text", "options")
         return Response({
-            "quiz_id": quiz.id,
+            "id": quiz.id,
             "session_id": quiz.session.id if quiz.session else None,
             "title": quiz.title,
             "description": quiz.description,
@@ -219,11 +225,8 @@ class GetQuizDetailsView(APIView):
         })
 
 class SubmitQuizAnswersView(APIView):
-    def post(self, request, session_id, quiz_id):
-        try:
-            session = ChatSession.objects.get(id=session_id)
-        except ChatSession.DoesNotExist:
-            return Response({"error": "Invalid session ID"}, status=404)
+    def post(self, request, quiz_id):
+
         try:
             quiz = Quiz.objects.get(id=quiz_id)
         except Quiz.DoesNotExist:
@@ -249,7 +252,7 @@ class SubmitQuizAnswersView(APIView):
                 is_correct = (user_answer_text.strip().lower() == question.correct_answer.strip().lower())
 
             attempt = UserQuizAttempt.objects.create(
-                session=session,
+                session=quiz.session,
                 quiz=quiz,
                 question=question,
                 user_answer=user_answer_text,
@@ -257,7 +260,10 @@ class SubmitQuizAnswersView(APIView):
             )
             submitted_answers.append({
                 "question_id": question.id,
+                "question_text": question.question_text,
+                "options": question.options,
                 "user_answer": user_answer_text,
+                "correct_answer": question.correct_answer,
                 "is_correct": is_correct,
                 "attempt_id": attempt.id
             })
@@ -587,12 +593,13 @@ Return a JSON object with this structure:
                 question = Question.objects.create(
                     quiz=quiz,
                     question_text=q_data.get("question_text", ""),
-                    correct_answer=q_data.get("correct_answer", "")
+                    correct_answer=q_data.get("correct_answer", ""),
+                    options=q_data.get("options", [])
                 )
                 created_questions.append({
                     "id": question.id,
                     "question_text": question.question_text,
-                    "options": q_data.get("options", []),
+                    "options": question.options,
                     "correct_answer": question.correct_answer
                 })
             

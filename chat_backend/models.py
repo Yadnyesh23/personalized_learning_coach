@@ -37,6 +37,7 @@ class Question(models.Model):
     quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name='questions')
     question_text = models.TextField()
     correct_answer = models.TextField(blank=True)
+    options = models.JSONField(default=list, blank=True)  # Store multiple choice options as JSON array
  
     def __str__(self):
         return f"Q {self.id} for Quiz {self.quiz.id}: {self.question_text[:50]}..."

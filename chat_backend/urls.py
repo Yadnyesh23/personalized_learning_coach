@@ -33,7 +33,7 @@ urlpatterns = [
     path('session/<int:session_id>/quiz/create/', CreateQuizView.as_view()),
     path('quiz/<int:quiz_id>/questions/add/', AddQuestionsView.as_view()),
     path('quiz/<int:quiz_id>/', GetQuizDetailsView.as_view()),
-    path('session/<int:session_id>/quiz/<int:quiz_id>/submit/', SubmitQuizAnswersView.as_view()),
+    path('quiz/<int:quiz_id>/submit/', SubmitQuizAnswersView.as_view()),
     path('session/<int:session_id>/quizzes/', ListSessionQuizzesView.as_view()),
     path('session/<int:session_id>/quiz_attempts/', GetUserQuizAttemptsView.as_view()),
     path('session/<int:session_id>/goal/create/', CreateGoalView.as_view()),
@@ -41,5 +41,5 @@ urlpatterns = [
     path('goal/<int:goal_id>/', GoalDetailView.as_view()),
     path('sessions/', ListSessionsView.as_view()),
     path('message/<int:message_id>/generate-quiz/', GenerateQuizFromMessageView.as_view()),
-    path('quizzes/', ListAllQuizzesView.as_view()),
+    path('quiz/', ListAllQuizzesView.as_view()),
 ]
