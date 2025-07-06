@@ -1,10 +1,15 @@
-
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser
 
-from .models import GlobalMemory, ChatSession, ChatMessage , Quiz, Question, UserQuizAttempt , Goal     
+from .models import GlobalMemory, ChatSession, ChatMessage , Quiz, Question, UserQuizAttempt , Goal
+from .utils.vectorstore import process_pdf_upload     
 
+from django.conf import settings
+from groq import Groq
+from .utils.groq_utils import generate_streaming_assistant_response
+from django.http import StreamingHttpResponse
+import json
 
 class InitMemoryView(APIView):
     def post(self, request):
@@ -20,7 +25,9 @@ class UpdateMemoryView(APIView):
         memory = GlobalMemory.objects.first() 
         if not memory:
             return Response({"error": "Global memory not initialized. Please call /memory/init/ first."}, status=400)
-        memory.preferences = request.data.get("preferences", memory.preferences)
+        preferences = request.data.get("preferences")
+        if preferences:
+            memory.preferences += preferences + "\n"
         memory.save() 
         return Response({"message": "Memory updated"}) 
 
@@ -50,9 +57,21 @@ class UploadPDFView(APIView):
         if not pdf_file:
             return Response({"error": "No PDF file provided"}, status=400)
 
+        # Save PDF to file system
         session.uploaded_pdf = pdf_file
         session.save() 
-        return Response({"message": "PDF uploaded"}) 
+        
+        # Process PDF and save to vector store with session_id as pdf_id
+        try:
+            pdf_id, chunk_count = process_pdf_upload(pdf_file, pdf_id=str(session_id))
+            return Response({
+                "message": "PDF uploaded and processed successfully",
+                "pdf_id": pdf_id
+            })
+        except Exception as e:
+            return Response({
+                "error": f"PDF upload failed: {str(e)}"
+            }, status=500) 
 
 class AddMessageView(APIView):
     def post(self, request, session_id):
@@ -86,25 +105,7 @@ class SessionMemoryView(APIView):
             "messages": list(messages),
             "pdf_uploaded": bool(session.uploaded_pdf) 
         })
-    
-class RagAnswerView(APIView):
-    def post(self, request, session_id):
-        try:
-            session = ChatSession.objects.get(id=session_id)
-        except ChatSession.DoesNotExist:
-            return Response({"error": "Invalid session ID"}, status=404)
 
-        query = request.data.get("query") 
-        if not query:
-            return Response({"error": "Query is required"}, status=400)
-
-      
-        answer = f"Fake RAG answer to: '{query}'"
-
-        
-        ChatMessage.objects.create(session=session, message=query, is_user=True) 
-        ChatMessage.objects.create(session=session, message=answer, is_user=False) 
-        return Response({"response": answer}) 
     
 class CreateQuizView(APIView):
     def post(self, request, session_id):
@@ -402,3 +403,43 @@ class GoalDetailView(APIView):
 
         goal.delete()
         return Response({"message": "Goal deleted successfully"}, status=204)
+
+class StreamingRagAnswerView(APIView):
+    def post(self, request, session_id):
+        try:
+            session = ChatSession.objects.get(id=session_id)
+        except ChatSession.DoesNotExist:
+            return Response({"error": "Invalid session ID"}, status=404)
+
+        query = request.data.get("query") 
+        if not query:
+            return Response({"error": "Query is required"}, status=400)
+
+        # Initialize Groq client
+        try:
+            groq_client = Groq(api_key=getattr(settings, 'GROQ_API_KEY', ''))
+            
+            def generate_response():
+                """Generator function for streaming response"""
+                for chunk_data in generate_streaming_assistant_response(
+                    query=query,
+                    session_id=session_id,
+                    groq_client=groq_client
+                ):
+                    yield f"data: {json.dumps(chunk_data)}\n\n"
+                    
+                    if chunk_data.get("done", False):
+                        break
+            
+            response = StreamingHttpResponse(
+                generate_response(),
+                content_type='text/event-stream'
+            )
+            response['Cache-Control'] = 'no-cache'
+            response['Connection'] = 'keep-alive'
+            response['X-Accel-Buffering'] = 'no'  # Disable nginx buffering
+            
+            return response
+                
+        except Exception as e:
+            return Response({"error": f"Streaming error: {str(e)}"}, status=500)
