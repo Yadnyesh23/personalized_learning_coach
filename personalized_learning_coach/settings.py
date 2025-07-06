@@ -12,6 +12,8 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 import os
+from dotenv import load_dotenv
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -27,6 +29,26 @@ SECRET_KEY = 'django-insecure-0259-hfewb9(6eiz*!#50=k%i+c+=dtp3u2scoi+_c(ue$9_1y
 DEBUG = True
 
 ALLOWED_HOSTS = []
+
+CORS_ALLOW_ALL_ORIGINS = True
+# allow all origins
+CORS_ALLOW_ORIGINS = [
+    'http://localhost:3000',
+    'http://localhost:8080',
+]
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+CSRF_TRUSTED_ORIGINS = [
+    'http://localhost:3000',
+    'http://localhost:8080',
+]
 
 
 # Application definition
@@ -48,7 +70,7 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
+    # 'django.middleware.csrf.CsrfViewMiddleware',  # Disabled CSRF verification
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -133,10 +155,11 @@ MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
 GROQ_API_KEY = os.getenv('GROQ_API_KEY', '')  # Add your Groq API key to environment variables
 SYSTEM_PROMPT = """
 You are a helpful assistant that can answer questions and help with tasks.
+Keep your responses short and concise.
 """
 
 MEMORY_FILE = os.path.join(BASE_DIR, "memories/consolidated_memory.txt")
 GOALS_FILE = os.path.join(BASE_DIR, "goals/goals.json")
 DOCUMENTS_DIR = os.path.join(BASE_DIR, "documents")
 VECTOR_STORE_FILE = os.path.join(BASE_DIR, "documents/vector_store.pkl")
-EMBEDDING_MODEL = "gemini-embedding-exp-03-07"  # Google Generative AI embedding model
+EMBEDDING_MODEL = "models/gemini-embedding-exp-03-07"  # Google Generative AI embedding model

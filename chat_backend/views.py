@@ -10,6 +10,7 @@ from groq import Groq
 from .utils.groq_utils import generate_streaming_assistant_response
 from django.http import StreamingHttpResponse
 import json
+import traceback
 
 class InitMemoryView(APIView):
     def post(self, request):
@@ -69,6 +70,7 @@ class UploadPDFView(APIView):
                 "pdf_id": pdf_id
             })
         except Exception as e:
+            traceback.print_exc()
             return Response({
                 "error": f"PDF upload failed: {str(e)}"
             }, status=500) 
@@ -100,12 +102,17 @@ class SessionMemoryView(APIView):
         except ChatSession.DoesNotExist:
             return Response({"error": "Invalid session ID"}, status=404)
 
-        messages = session.messages.order_by("created_at").values("message", "is_user", "created_at") 
+        messages = session.messages.order_by("created_at").values("id", "message", "is_user", "created_at") 
         return Response({
             "messages": list(messages),
-            "pdf_uploaded": bool(session.uploaded_pdf) 
+            "pdf_uploaded": session.uploaded_pdf.name if session.uploaded_pdf else None
         })
 
+
+class ListSessionsView(APIView):
+    def get(self, request):
+        sessions = ChatSession.objects.all().values("id", "created_at")
+        return Response({"sessions": list(sessions)})
     
 class CreateQuizView(APIView):
     def post(self, request, session_id):
@@ -296,13 +303,9 @@ class CreateGoalView(APIView):
 
 
 class ListGoalsView(APIView):
-    def get(self, request, session_id):
-        try:
-            session = ChatSession.objects.get(id=session_id)
-        except ChatSession.DoesNotExist:
-            return Response({"error": "Invalid session ID"}, status=404)
-
-        goals = session.goals.all().order_by('deadline', 'created_at').values(
+    def get(self, request):
+        # return all goals
+        goals = Goal.objects.all().order_by('deadline', 'created_at').values(
             "id", "title", "description", "deadline", "status", "created_at"
         )
         return Response({"goals": list(goals)})
@@ -421,16 +424,21 @@ class StreamingRagAnswerView(APIView):
             
             def generate_response():
                 """Generator function for streaming response"""
-                for chunk_data in generate_streaming_assistant_response(
-                    query=query,
-                    session_id=session_id,
-                    groq_client=groq_client
-                ):
-                    yield f"data: {json.dumps(chunk_data)}\n\n"
-                    
-                    if chunk_data.get("done", False):
-                        break
-            
+                try:
+                    for chunk_data in generate_streaming_assistant_response(
+                        query=query,
+                        session_id=session_id,
+                        groq_client=groq_client
+                    ):
+                        yield f"data: {json.dumps(chunk_data)}\n\n"
+                        print(chunk_data)
+                        if chunk_data.get("done", False):
+                            break
+                except Exception as e:
+                    error_chunk = {"chunk": "", "done": True, "error": str(e)}
+                    yield f"data: {json.dumps(error_chunk)}\n\n"
+                    print(f"Streaming error: {str(e)}")
+
             response = StreamingHttpResponse(
                 generate_response(),
                 content_type='text/event-stream'

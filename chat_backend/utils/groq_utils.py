@@ -6,7 +6,7 @@ from django.conf import settings
 from ..models import GlobalMemory, ChatSession, ChatMessage, Goal
 from .vectorstore import get_vector_store, get_rag_context
 from datetime import datetime
-
+import traceback
 
 def extract_memory(user_input, llm_response, groq_client, MODEL):
     """Extract personalized learning memory using Groq"""
@@ -167,6 +167,7 @@ def generate_streaming_assistant_response(
     max_chunks=3,
     recent_messages_count=5
 ):
+    print(f"Starting new streaming response for query: {query[:50]}...")
     """
     Generate streaming assistant response with memory, goals, and RAG context integration
     
@@ -248,7 +249,7 @@ def generate_streaming_assistant_response(
         
         messages.append({"role": "system", "content": system_message})
         
-        # Add recent conversation history
+    # Add recent conversation history (excluding the current query)
         try:
             recent_messages = ChatMessage.objects.filter(session=session).order_by('-created_at')[:recent_messages_count]
             # Reverse to get chronological order
@@ -258,22 +259,27 @@ def generate_streaming_assistant_response(
         except Exception as e:
             print(f"Error loading recent messages: {str(e)}")
         
+        # Add current user query to messages
+        messages.append({"role": "user", "content": query})
+        
         # Generate streaming response using Groq
         stream = groq_client.chat.completions.create(
             messages=messages,
             model=settings.MODEL,
             temperature=temperature,
-            max_tokens=max_tokens,
-            stream=True
+            max_completion_tokens=max_tokens,
+            stream=True,
+            stop=None,
+            top_p=1,
         )
         
         full_response = ""
         for chunk in stream:
-            if chunk.choices[0].delta.content is not None:
-                chunk_content = chunk.choices[0].delta.content
+            chunk_content = chunk.choices[0].delta.content or ""
+            if chunk_content:  # Only yield non-empty chunks
                 full_response += chunk_content
                 yield {"chunk": chunk_content, "done": False}
-        
+    
         # Save messages to database
         try:
             ChatMessage.objects.create(session=session, message=query, is_user=True)
@@ -338,9 +344,11 @@ def generate_streaming_assistant_response(
                 "memory_content": memory_content if memory_saved else None
             }
         }
+        print(f"Streaming response completed for query: {query[:50]}...")
         yield final_chunk
         
     except Exception as e:
+        traceback.print_exc()
         yield {"chunk": "", "done": True, "error": f"Error generating response: {str(e)}"}
 
 

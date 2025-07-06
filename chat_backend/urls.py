@@ -16,7 +16,8 @@ from .views import (
     GetUserQuizAttemptsView,
     CreateGoalView,
     ListGoalsView,
-    GoalDetailView
+    GoalDetailView,
+    ListSessionsView
 )
 
 urlpatterns = [
@@ -34,6 +35,7 @@ urlpatterns = [
     path('session/<int:session_id>/quizzes/', ListSessionQuizzesView.as_view()),
     path('session/<int:session_id>/quiz_attempts/', GetUserQuizAttemptsView.as_view()),
     path('session/<int:session_id>/goal/create/', CreateGoalView.as_view()),
-    path('session/<int:session_id>/goals/', ListGoalsView.as_view()),
+    path('goals/', ListGoalsView.as_view()),
     path('goal/<int:goal_id>/', GoalDetailView.as_view()),
+    path('sessions/', ListSessionsView.as_view()),
 ]
