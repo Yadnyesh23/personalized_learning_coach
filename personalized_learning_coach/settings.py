@@ -127,3 +127,16 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+GROQ_API_KEY = os.getenv('GROQ_API_KEY', '')  # Add your Groq API key to environment variables
+SYSTEM_PROMPT = """
+You are a helpful assistant that can answer questions and help with tasks.
+"""
+
+MEMORY_FILE = os.path.join(BASE_DIR, "memories/consolidated_memory.txt")
+GOALS_FILE = os.path.join(BASE_DIR, "goals/goals.json")
+DOCUMENTS_DIR = os.path.join(BASE_DIR, "documents")
+VECTOR_STORE_FILE = os.path.join(BASE_DIR, "documents/vector_store.pkl")
+EMBEDDING_MODEL = "gemini-embedding-exp-03-07"  # Google Generative AI embedding model
