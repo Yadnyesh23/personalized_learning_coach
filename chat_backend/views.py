@@ -138,7 +138,7 @@ class SessionMemoryView(APIView):
                     "quiz_id": msg.quiz.id,
                     "title": msg.quiz.title,
                     "description": msg.quiz.description,
-                    "num_questions": msg.quiz.questions.count() # Count related questions
+                    "num_questions": msg.quiz.questions.count() 
                 }
             formatted_messages.append(message_data)
 
@@ -147,6 +147,14 @@ class SessionMemoryView(APIView):
             "messages": formatted_messages,
             "pdf_uploaded": bool(session.uploaded_pdf)
         })
+
+    
+class RagAnswerView(APIView):
+    def post(self, request, session_id):
+        try:
+            session = ChatSession.objects.get(id=session_id)
+        except ChatSession.DoesNotExist:
+            return Response({"error": "Invalid session ID"}, status=404)
 
     
 class CreateQuizView(APIView):
@@ -445,3 +453,44 @@ class GoalDetailView(APIView):
 
         goal.delete()
         return Response({"message": "Goal deleted successfully"}, status=204)
+
+class StreamingRagAnswerView(APIView):
+    def post(self, request, session_id):
+        try:
+            session = ChatSession.objects.get(id=session_id)
+        except ChatSession.DoesNotExist:
+            return Response({"error": "Invalid session ID"}, status=404)
+
+        query = request.data.get("query") 
+        if not query:
+            return Response({"error": "Query is required"}, status=400)
+
+        # Initialize Groq client
+        try:
+            groq_client = Groq(api_key=getattr(settings, 'GROQ_API_KEY', ''))
+            
+            def generate_response():
+                """Generator function for streaming response"""
+                for chunk_data in generate_streaming_assistant_response(
+                    query=query,
+                    session_id=session_id,
+                    groq_client=groq_client
+                ):
+                    yield f"data: {json.dumps(chunk_data)}\n\n"
+                    
+                    if chunk_data.get("done", False):
+                        break
+            
+            response = StreamingHttpResponse(
+                generate_response(),
+                content_type='text/event-stream'
+            )
+            response['Cache-Control'] = 'no-cache'
+            response['Connection'] = 'keep-alive'
+            response['X-Accel-Buffering'] = 'no'  # Disable nginx buffering
+            
+            return response
+                
+        except Exception as e:
+            return Response({"error": f"Streaming error: {str(e)}"}, status=500)
+

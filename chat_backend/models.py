@@ -14,8 +14,8 @@ class ChatSession(models.Model):
         return f"Chat Session {self.id}"
 
 class Quiz(models.Model):
-    session = models.ForeignKey(ChatSession, on_delete=models.CASCADE, related_name='quizzes', null=True, blank=True)
     title = models.CharField(max_length=255)
+    session = models.ForeignKey(ChatSession, on_delete=models.CASCADE, related_name='quizzes')
     description = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
