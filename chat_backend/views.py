@@ -118,9 +118,33 @@ class SessionMemoryView(APIView):
         except ChatSession.DoesNotExist:
             return Response({"error": "Invalid session ID"}, status=404)
 
-        messages = session.messages.order_by("created_at").values("id", "message", "is_user", "created_at") 
+        # Get messages with quiz information using select_related for better performance
+        messages = session.messages.select_related('quiz').order_by("created_at")
+        
+        # Build message list with quiz details
+        message_list = []
+        for message in messages:
+            message_data = {
+                "id": message.id,
+                "message": message.message,
+                "is_user": message.is_user,
+                "created_at": message.created_at,
+                "quiz": None
+            }
+            
+            # Add quiz information if the message has an associated quiz
+            if message.quiz:
+                message_data["quiz"] = {
+                    "id": message.quiz.id,
+                    "title": message.quiz.title,
+                    "description": message.quiz.description,
+                    "num_questions": message.quiz.questions.count()
+                }
+            
+            message_list.append(message_data)
+        
         return Response({
-            "messages": list(messages),
+            "messages": message_list,
             "pdf_uploaded": session.uploaded_pdf.name if session.uploaded_pdf else None
         })
 
@@ -467,4 +491,163 @@ class StreamingRagAnswerView(APIView):
                 
         except Exception as e:
             return Response({"error": f"Streaming error: {str(e)}"}, status=500)
+
+class GenerateQuizFromMessageView(APIView):
+    def post(self, request, message_id):
+        """
+        Generate a quiz from a specific message using Groq
+        """
+        try:
+            # Get the message
+            message = ChatMessage.objects.get(id=message_id)
+        except ChatMessage.DoesNotExist:
+            return Response({"error": "Message not found"}, status=404)
+        
+        # Check if a quiz already exists for this message
+        existing_quiz = Quiz.objects.filter(chat_messages=message).first()
+        if existing_quiz:
+            return Response({
+                "error": "Quiz already exists for this message",
+                "quiz_id": existing_quiz.id
+            }, status=400)
+        
+        try:
+            # Initialize Groq client
+            groq_client = Groq(api_key=settings.GROQ_API_KEY)
+            
+            # Create quiz generation prompt
+            quiz_prompt = f"""### Role
+You're a Quiz Generation Assistant. Create a comprehensive quiz based on the given message content.
+
+### Task
+Generate a quiz with 5 multiple choice questions based on the message content. Focus on key concepts, important details, and practical applications.
+
+### Output Format
+Return a JSON object with this structure:
+{{
+  "title": "Quiz title based on the message content",
+  "description": "Brief description of what this quiz covers",
+  "questions": [
+    {{
+      "question_text": "Question text here",
+      "options": ["Option A", "Option B", "Option C", "Option D"],
+      "correct_answer": "Correct option text (must match one of the options exactly)"
+    }}
+  ]
+}}
+
+### Message Content
+{message.message}
+
+### Instructions
+- Create questions that test understanding of the main concepts
+- Make sure all options are plausible but only one is correct
+- Keep questions clear and concise
+- Ensure the correct_answer exactly matches one of the options#
+
+# Rules:
+# Output only a VALID JSON object with the structure specified above.
+# Do not include any other text or comments."""
+
+            # Generate quiz using Groq
+            response = groq_client.chat.completions.create(
+                messages=[
+                    {"role": "system", "content": "You are a quiz generation assistant. Always return valid JSON."},
+                    {"role": "user", "content": quiz_prompt}
+                ],
+                model=settings.MODEL,
+                temperature=0.7,
+                max_tokens=3000
+            )
+            
+            quiz_data_text = response.choices[0].message.content.strip()
+            
+            # Parse the JSON response
+            # quiz_data_text = quiz_data_text.replace("```json", "").replace("```", "")
+            # print(quiz_data_text, file=open("quiz_data_text.json", "w"))
+            try:
+                quiz_data = json.loads(quiz_data_text)
+            except json.JSONDecodeError:
+                return Response({"error": "Failed to generate valid quiz data"}, status=500)
+            
+            # Create the quiz
+            quiz = Quiz.objects.create(
+                session=message.session,
+                title=quiz_data.get("title", f"Quiz for Message {message_id}"),
+                description=quiz_data.get("description", "")
+            )
+            
+            # Link the quiz to the message
+            message.quiz = quiz
+            message.save()
+            
+            # Create questions
+            created_questions = []
+            for q_data in quiz_data.get("questions", []):
+                question = Question.objects.create(
+                    quiz=quiz,
+                    question_text=q_data.get("question_text", ""),
+                    correct_answer=q_data.get("correct_answer", "")
+                )
+                created_questions.append({
+                    "id": question.id,
+                    "question_text": question.question_text,
+                    "options": q_data.get("options", []),
+                    "correct_answer": question.correct_answer
+                })
+            
+            return Response({
+                "message": "Quiz generated successfully",
+                "quiz_id": quiz.id,
+                "title": quiz.title,
+                "description": quiz.description,
+                "questions": created_questions
+            }, status=201)
+            
+        except Exception as e:
+            traceback.print_exc()
+            return Response({
+                "error": f"Failed to generate quiz: {str(e)}"
+            }, status=500)
+
+
+class ListAllQuizzesView(APIView):
+    def get(self, request):
+        """
+        List all quizzes across all sessions with pagination
+        """
+        try:
+            # Get all quizzes with related data
+            quizzes = Quiz.objects.select_related('session').prefetch_related('questions').all()
+            
+            # Apply pagination
+            paginator = CustomPagination()
+            paginated_quizzes = paginator.paginate_queryset(quizzes, request)
+            
+            quiz_list = []
+            for quiz in paginated_quizzes:
+                quiz_data = {
+                    "id": quiz.id,
+                    "title": quiz.title,
+                    "description": quiz.description,
+                    "session_id": quiz.session.id if quiz.session else None,
+                    "created_at": quiz.created_at,
+                    "question_count": quiz.questions.count(),
+                    "linked_message_id": None
+                }
+                
+                # Find the linked message
+                linked_message = quiz.chat_messages.first()
+                if linked_message:
+                    quiz_data["linked_message_id"] = linked_message.id
+                
+                quiz_list.append(quiz_data)
+            
+            return paginator.get_paginated_response(quiz_list)
+            
+        except Exception as e:
+            traceback.print_exc()
+            return Response({
+                "error": f"Failed to retrieve quizzes: {str(e)}"
+            }, status=500)
 

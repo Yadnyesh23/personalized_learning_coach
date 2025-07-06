@@ -17,7 +17,9 @@ from .views import (
     CreateGoalView,
     ListGoalsView,
     GoalDetailView,
-    ListSessionsView
+    ListSessionsView,
+    GenerateQuizFromMessageView,
+    ListAllQuizzesView
 )
 
 urlpatterns = [
@@ -38,4 +40,6 @@ urlpatterns = [
     path('goals/', ListGoalsView.as_view()),
     path('goal/<int:goal_id>/', GoalDetailView.as_view()),
     path('sessions/', ListSessionsView.as_view()),
+    path('message/<int:message_id>/generate-quiz/', GenerateQuizFromMessageView.as_view()),
+    path('quizzes/', ListAllQuizzesView.as_view()),
 ]

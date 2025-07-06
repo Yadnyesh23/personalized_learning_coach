@@ -22,23 +22,23 @@ Capture ONLY these 5 learning-specific elements:
 5. 📈 **Progress Updates** - Milestones/completed topics
 
 ### Output Rules
-- Return {{"save": false}} if NO learning-relevant details found
+- Return {"save": false} if NO learning-relevant details found
 - For valuable insights, return:
-{{
+{
   "save": true,
   "memory": "Concise 3rd-person summary (max 15 words) using learning terminology",
   "category": "Goals/Difficulties/Preferences/Progress"  # Pick ONE main category
-}}
+}
 
 ### Examples
 User: I always get stuck on gradient descent in neural networks
-→ {{"save": true, "memory": "Struggles with gradient descent in neural networks", "category": "Difficulties"}}
+→ {"save": true, "memory": "Struggles with gradient descent in neural networks", "category": "Difficulties"}
 
 User: Can we use more diagrams next time? I'm a visual learner
-→ {{"save": true, "memory": "Prefers visual explanations with diagrams", "category": "Preferences"}}
+→ {"save": true, "memory": "Prefers visual explanations with diagrams", "category": "Preferences"}
 
 User: Just finished module 3 on calculus basics
-→ {{"save": true, "memory": "Completed calculus fundamentals module", "category": "Progress"}}
+→ {"save": true, "memory": "Completed calculus fundamentals module", "category": "Progress"}
 
 ---
 
@@ -48,7 +48,10 @@ Assistant: {llm_response}
 
 ### Analysis
 Scan for LEARNING-SPECIFIC signals. Ignore casual/social content.
-Only capture explicit statements about the 5 focus areas."""
+Only capture explicit statements about the 5 focus areas.
+
+### Rules:
+# return only one memory object and nothing else"""
 
     try:
         response = groq_client.chat.completions.create(
@@ -283,7 +286,7 @@ def generate_streaming_assistant_response(
         # Save messages to database
         try:
             ChatMessage.objects.create(session=session, message=query, is_user=True)
-            ChatMessage.objects.create(session=session, message=full_response, is_user=False)
+            obj = ChatMessage.objects.create(session=session, message=full_response, is_user=False)
         except Exception as e:
             print(f"Error saving messages: {str(e)}")
         
@@ -338,7 +341,9 @@ def generate_streaming_assistant_response(
         final_chunk = {
             "chunk": "", 
             "done": True,
+
             "metadata": {
+                "new_message_id": obj.id if obj else None,
                 "goals_created": goals_created,
                 "memory_saved": memory_saved,
                 "memory_content": memory_content if memory_saved else None
